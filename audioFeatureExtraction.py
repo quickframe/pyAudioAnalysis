@@ -3,7 +3,7 @@ import time
 import os
 import glob
 import numpy
-import cPickle
+import pickle
 import aifc
 import math
 from numpy import NaN, Inf, arange, isscalar, array
@@ -14,9 +14,8 @@ from scipy.signal import fftconvolve
 from matplotlib.mlab import find
 import matplotlib.pyplot as plt
 from scipy import linalg as la
-import audioTrainTest as aT
-import audioBasicIO
-import utilities
+from pyAudioAnalysis import audioBasicIO
+from pyAudioAnalysis import utilities
 from scipy.signal import lfilter, hamming
 #from scikits.talkbox import lpc
 
@@ -199,7 +198,7 @@ def mfccInitFilterBanks(fs, nfft):
     freqs[:numLinFiltTotal] = lowfreq + numpy.arange(numLinFiltTotal) * linsc
     freqs[numLinFiltTotal:] = freqs[numLinFiltTotal-1] * logsc ** numpy.arange(1, numLogFilt + 3)
     heights = 2./(freqs[2:] - freqs[0:-2])
-
+    nfft = int(nfft)
     # Compute filterbank coeff (in fft domain, in bins)
     fbank = numpy.zeros((nFiltTotal, nfft))
     nfreqs = numpy.arange(nfft) / (1. * nfft) * fs
@@ -242,8 +241,8 @@ def stChromaFeaturesInit(nfft, fs):
     """
     This function initializes the chroma matrices used in the calculation of the chroma features
     """
-    freqs = numpy.array([((f + 1) * fs) / (2 * nfft) for f in range(nfft)])    
-    Cp = 27.50    
+    freqs = numpy.array([((f + 1) * fs) / (2 * nfft) for f in range(nfft)])
+    Cp = 27.50
     nChroma = numpy.round(12.0 * numpy.log2(freqs / Cp)).astype(int)
 
     nFreqsPerChroma = numpy.zeros((nChroma.shape[0], ))
@@ -252,7 +251,7 @@ def stChromaFeaturesInit(nfft, fs):
     for u in uChroma:
         idx = numpy.nonzero(nChroma == u)
         nFreqsPerChroma[idx] = idx[0].shape
-    
+
     return nChroma, nFreqsPerChroma
 
 
@@ -261,21 +260,21 @@ def stChromaFeatures(X, fs, nChroma, nFreqsPerChroma):
     #TODO: 2 bug with large windows
 
     chromaNames = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#']
-    spec = X**2    
-    if nChroma.max()<nChroma.shape[0]:        
+    spec = X**2
+    if nChroma.max()<nChroma.shape[0]:
         C = numpy.zeros((nChroma.shape[0],))
         C[nChroma] = spec
         C /= nFreqsPerChroma[nChroma]
-    else:        
-        I = numpy.nonzero(nChroma>nChroma.shape[0])[0][0]        
+    else:
+        I = numpy.nonzero(nChroma>nChroma.shape[0])[0][0]
         C = numpy.zeros((nChroma.shape[0],))
-        C[nChroma[0:I-1]] = spec            
+        C[nChroma[0:I-1]] = spec
         C /= nFreqsPerChroma
     finalC = numpy.zeros((12, 1))
     newD = int(numpy.ceil(C.shape[0] / 12.0) * 12)
     C2 = numpy.zeros((newD, ))
     C2[0:C.shape[0]] = C
-    C2 = C2.reshape(C2.shape[0]/12, 12)
+    C2 = C2.reshape(int(C2.shape[0]/12), 12)
     #for i in range(12):
     #    finalC[i] = numpy.sum(C[i:C.shape[0]:12])
     finalC = numpy.matrix(numpy.sum(C2, axis=0)).T
@@ -342,7 +341,7 @@ def stChromagram(signal, Fs, Win, Step, PLOT=False):
     if (PLOT):
         fig, ax = plt.subplots()
         chromaGramToPlot = chromaGram.transpose()[::-1, :]
-        Ratio = chromaGramToPlot.shape[1] / (3*chromaGramToPlot.shape[0])        
+        Ratio = chromaGramToPlot.shape[1] / (3*chromaGramToPlot.shape[0])
         if Ratio < 1:
             Ratio = 1
         chromaGramToPlot = numpy.repeat(chromaGramToPlot, Ratio, axis=0)
@@ -370,12 +369,12 @@ def phormants(x, Fs):
     w = numpy.hamming(N)
 
     # Apply window and high pass filter.
-    x1 = x * w   
+    x1 = x * w
     x1 = lfilter([1], [1., 0.63], x1)
-    
-    # Get LPC.    
+
+    # Get LPC.
     ncoeff = 2 + Fs / 1000
-    A, e, k = lpc(x1, ncoeff)    
+    A, e, k = lpc(x1, ncoeff)
     #A, e, k = lpc(x1, 8)
 
     # Get roots.
@@ -385,7 +384,7 @@ def phormants(x, Fs):
     # Get angles.
     angz = numpy.arctan2(numpy.imag(rts), numpy.real(rts))
 
-    # Get frequencies.    
+    # Get frequencies.
     frqs = sorted(angz * (Fs / (2 * math.pi)))
 
     return frqs
@@ -544,7 +543,7 @@ def stFeatureExtraction(signal, Fs, Win, Step):
     N = len(signal)                                # total number of samples
     curPos = 0
     countFrames = 0
-    nFFT = Win / 2
+    nFFT =int( Win / 2)
 
     [fbank, freqs] = mfccInitFilterBanks(Fs, nFFT)                # compute the triangular filter banks used in the mfcc calculation
     nChroma, nFreqsPerChroma = stChromaFeaturesInit(nFFT, Fs)
@@ -753,7 +752,7 @@ def dirWavFeatureExtraction(dirName, mtWin, mtStep, stWin, stStep, computeBEAT=F
         duration = float(len(x)) / Fs
         processingTimes.append((t2 - t1) / duration)
     if len(processingTimes) > 0:
-        print "Feature extraction complexity ratio: {0:.1f} x realtime".format((1.0 / numpy.mean(numpy.array(processingTimes))))
+        print("Feature extraction complexity ratio: {0:.1f} x realtime".format((1.0 / numpy.mean(numpy.array(processingTimes)))))
     return (allMtFeatures, wavFilesList)
 
 
@@ -851,20 +850,20 @@ def mtFeatureExtractionToFile(fileName, midTermSize, midTermStep, shortTermSize,
 
     numpy.save(outPutFile, mtF)                              # save mt features to numpy file
     if PLOT:
-        print "Mid-term numpy file: " + outPutFile + ".npy saved"
+        print("Mid-term numpy file: " + outPutFile + ".npy saved")
     if storeToCSV:
         numpy.savetxt(outPutFile+".csv", mtF.T, delimiter=",")
         if PLOT:
-            print "Mid-term CSV file: " + outPutFile + ".csv saved"
+            print("Mid-term CSV file: " + outPutFile + ".csv saved")
 
     if storeStFeatures:
         numpy.save(outPutFile+"_st", stF)                    # save st features to numpy file
         if PLOT:
-            print "Short-term numpy file: " + outPutFile + "_st.npy saved"
+            print("Short-term numpy file: " + outPutFile + "_st.npy saved")
         if storeToCSV:
             numpy.savetxt(outPutFile+"_st.csv", stF.T, delimiter=",")    # store st features to CSV file
             if PLOT:
-                print "Short-term CSV file: " + outPutFile + "_st.csv saved"
+                print("Short-term CSV file: " + outPutFile + "_st.csv saved")
 
 
 def mtFeatureExtractionToFileDir(dirName, midTermSize, midTermStep, shortTermSize, shortTermStep, storeStFeatures=False, storeToCSV=False, PLOT=False):
